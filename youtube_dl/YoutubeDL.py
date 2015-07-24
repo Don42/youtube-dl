@@ -57,6 +57,7 @@ from .utils import (
     locked_file,
     make_HTTPS_handler,
     MaxDownloadsReached,
+    OptionalDependencyNotFound,
     PagedList,
     parse_filesize,
     PerRequestProxyHandler,
@@ -1997,6 +1998,31 @@ class YoutubeDL(object):
                 proxies['https'] = proxies['http']
         proxy_handler = PerRequestProxyHandler(proxies)
 
+        socks_handler = None
+        opts_socks = self.params.get('socksproxy')
+        if opts_socks is not None and opts_socks:
+            # Try to import the dependencies for this feature
+            try:
+                import socks
+            except ImportError:
+                raise OptionalDependencyNotFound(module_name='socks',
+                                                 feature_name='--socks-proxy')
+            try:
+                from sockshandler import SocksiPyHandler
+            except ImportError:
+                raise OptionalDependencyNotFound(module_name='sockshandler',
+                                                 feature_name='--socks-proxy')
+
+            pair = opts_socks.split(':')
+            if len(pair) == 2:
+                socks_handler = SocksiPyHandler(socks.PROXY_TYPE_SOCKS5,
+                                                pair[0],
+                                                int(pair[1]))
+            else:
+                socks_handler = SocksiPyHandler(socks.PROXY_TYPE_SOCKS5,
+                                                'localhost',
+                                                int(pair[0]))
+
         debuglevel = 1 if self.params.get('debug_printtraffic') else 0
         https_handler = make_HTTPS_handler(self.params, debuglevel=debuglevel)
         ydlh = YoutubeDLHandler(self.params, debuglevel=debuglevel)
@@ -2012,8 +2038,12 @@ class YoutubeDL(object):
             raise compat_urllib_error.URLError('file:// scheme is explicitly disabled in youtube-dl for security reasons')
         file_handler.file_open = file_open
 
-        opener = compat_urllib_request.build_opener(
-            proxy_handler, https_handler, cookie_processor, ydlh, data_handler, file_handler)
+        proxy_list = []
+        if socks_handler:
+            proxy_list.append(socks_handler)
+        proxy_list += [proxy_handler, https_handler, cookie_processor, ydlh,
+                       data_handler, file_handler]
+        opener = compat_urllib_request.build_opener(*proxy_list)
 
         # Delete the default user-agent header, which would otherwise apply in
         # cases where our custom HTTP handler doesn't come into play
