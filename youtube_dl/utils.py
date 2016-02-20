@@ -1853,6 +1853,12 @@ def error_to_compat_str(err):
 
 
 def mimetype2ext(mt):
+    ext = {
+        'audio/mp4': 'm4a',
+    }.get(mt)
+    if ext is not None:
+        return ext
+
     _, _, res = mt.rpartition('/')
 
     return {
